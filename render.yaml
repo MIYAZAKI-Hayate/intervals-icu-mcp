@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: intervals-icu-readonly-mcp
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: AUTH_MODE
+        value: auth0
+      - key: HOST
+        value: 0.0.0.0
+      - key: INTERVALS_API_KEY
+        sync: false
+      - key: MCP_RESOURCE_URL
+        sync: false
+      - key: AUTH0_ISSUER
+        sync: false
+      - key: AUTH0_ALLOWED_SUB
+        sync: false
