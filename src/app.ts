@@ -6,7 +6,7 @@ import { IntervalsClient } from "./intervals.js";
 import { createIntervalsMcpServer } from "./mcp.js";
 
 export function createApp(config: AppConfig, client?: IntervalsClient) {
-  const app = createMcpExpressApp();
+  const app = createMcpExpressApp({ host: config.host });
   const intervals =
     client ??
     new IntervalsClient(
