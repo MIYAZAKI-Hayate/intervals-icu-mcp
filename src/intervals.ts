@@ -24,6 +24,10 @@ export class IntervalsClient {
     return this.getArray("/athlete/0/wellness", { oldest, newest });
   }
 
+  async sportSettings(): Promise<JsonObject[]> {
+    return this.getArray("/athlete/0/sport-settings", {});
+  }
+
   async plannedWorkouts(oldest: string, newest: string): Promise<JsonObject[]> {
     return this.getArray("/athlete/0/events", { oldest, newest, category: "WORKOUT" });
   }

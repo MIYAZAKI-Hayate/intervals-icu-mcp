@@ -16,6 +16,7 @@ import { buildTrainingSummary } from "./summary.js";
 import { toolSecuritySchemes } from "./auth.js";
 import { plannedWorkoutOutputSchema, registerCalendarWriteTools } from "./calendar.js";
 import { streamsResultSchema, summarizeStreams } from "./streams.js";
+import { sanitizeSportSettings, sportSettingsSchema } from "./settings.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DDで指定してください");
 const readOnlyAnnotations = {
@@ -311,5 +312,23 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
   });
 
   registerCalendarWriteTools(server, config, client);
+  server.registerTool("get_sport_settings", withSecurity({
+    title: "Intervals.icu 種目別設定の取得",
+    description: "現在の種目別FTP・屋内FTP・閾値心拍・最大心拍・閾値ペース・ゾーン設定を読み取り専用で取得します。sport省略時は全設定グループを返します。共有設定のsportsを確認してください。パワー境界はFTP比%、心拍はbpm、ペース境界は閾値速度比%です。適用期間や過去の設定は取得できず、updatedAtは適用開始日ではありません。カスタムゾーンの定義は含みません。",
+    inputSchema: { sport: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,39}$/).optional().describe("Run, Ride, Swim, VirtualRide等。設定のsportsに完全一致する種目で絞る") },
+    outputSchema: { retrievedAt: z.string(), settings: z.array(sportSettingsSchema), notes: z.array(z.string()) },
+    annotations: readOnlyAnnotations
+  }), async ({ sport }) => {
+    try {
+      const settings = (await client.sportSettings()).map(sanitizeSportSettings)
+        .filter((setting) => sport === undefined || setting.sports.includes(sport));
+      return textAndData({ retrievedAt: new Date().toISOString(), settings, notes: [
+        "現在の設定です。適用開始・終了日と履歴は取得できません。updatedAtは更新日時であり適用開始日ではありません。",
+        "ゾーン境界と名前はAPIの配列をそのままの順序で返します。上限の番兵値を含む場合があり、最終ゾーンや欠測項目を推測しないでください。",
+        "threshold_paceは速度(m/s)として取得し、秒/kmと秒/100mに換算しています。ペースゾーンの%は時間ペースではなく速度の比率です。",
+        "カスタムゾーン定義は含みません。settingsが空の場合は一致する設定が取得されていません。"
+      ] });
+    } catch (error) { return toolError(error); }
+  });
   return server;
 }

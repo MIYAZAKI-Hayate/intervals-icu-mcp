@@ -7,6 +7,11 @@ Garmin Connect から Intervals.icu に同期されたアクティビティ・�
 - `get_activities`: 期間内のアクティビティ要約
 - `get_activity_detail`: 活動IDで主要指標と最大200区間の詳細を取得
 - `get_activity_streams`: 心拍・パワー・速度などを時間帯ごとに集計（全範囲を最大180区間）
+- `get_sport_settings`: 現在の種目別FTP・屋内FTP・閾値心拍・最大心拍・閾値ペース・ゾーン設定を取得。`sport`省略時は全設定、指定時は共有設定の`types`に完全一致する種目で絞り込み
+
+種目設定は `GET /athlete/0/sport-settings` から必要な項目だけを返します。既存の読み取り権限で利用できます。パワーゾーン境界はFTP比%、心拍はbpm、ペースは閾値速度比%です。境界・名前の配列は元の順序を維持し、999等の番兵値や未設定値から範囲を推測しません。閾値ペースの元値はm/sで、秒/km・秒/100mも返します。屋内FTPの欠測を屋外FTPで自動補完しません。カスタムゾーン定義は対象外です。
+
+APIは現在の種目設定を返し、適用開始日・終了日や履歴を返しません。`effectiveFrom`/`effectiveTo`はnull、`retrievedAt`は取得日時、`updatedAt`はAPIの更新日時です。更新日時を適用開始日として扱わず、過去の活動に現在の設定を自動適用しないでください。
 - `get_planned_workouts`: 指定期間のカレンダーにある予定練習を取得（最大200件）
 - `get_wellness`: CTL、ATL、フォーム、負荷、HRV、睡眠など
 - `get_training_summary`: 競技別の時間・距離・負荷と最新Wellnessをまとめて取得
