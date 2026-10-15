@@ -22,7 +22,21 @@ export class IntervalsClient {
     return this.getArray("/athlete/0/wellness", { oldest, newest });
   }
 
+  async activity(id: string): Promise<JsonObject> {
+    const value = await this.getJson(`/activity/${encodeURIComponent(id)}`, { intervals: "true" });
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("Intervals.icu returned an unexpected activity response");
+    }
+    return value as JsonObject;
+  }
+
   private async getArray(path: string, query: Record<string, string>): Promise<JsonObject[]> {
+    const value = await this.getJson(path, query);
+    if (!Array.isArray(value)) throw new Error("Intervals.icu returned an unexpected response");
+    return value.filter((item): item is JsonObject => typeof item === "object" && item !== null);
+  }
+
+  private async getJson(path: string, query: Record<string, string>): Promise<unknown> {
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
 
@@ -36,9 +50,7 @@ export class IntervalsClient {
     });
 
     if (!response.ok) throw new IntervalsApiError(response.status);
-    const value: unknown = await response.json();
-    if (!Array.isArray(value)) throw new Error("Intervals.icu returned an unexpected response");
-    return value.filter((item): item is JsonObject => typeof item === "object" && item !== null);
+    return response.json() as Promise<unknown>;
   }
 }
 
@@ -126,5 +138,41 @@ export function sanitizeWellness(raw: JsonObject) {
     injury: stringOrNull(raw.injury),
     comments: stringOrNull(raw.comments),
     sportInfo
+  };
+}
+
+const MAX_INTERVALS = 200;
+
+export function sanitizeActivityDetail(raw: JsonObject) {
+  const source = Array.isArray(raw.icu_intervals) ? raw.icu_intervals : [];
+  const intervals = source
+    .filter((item): item is JsonObject => typeof item === "object" && item !== null && !Array.isArray(item))
+    .slice(0, MAX_INTERVALS)
+    .map((item) => {
+      const speed = numberOrNull(item.average_speed);
+      const distance = numberOrNull(item.distance);
+      const duration = numberOrNull(item.moving_time) ?? numberOrNull(item.elapsed_time);
+      return {
+        type: stringOrNull(item.type),
+        startSeconds: rounded(numberOrNull(item.start_time), 0),
+        endSeconds: rounded(numberOrNull(item.end_time), 0),
+        durationMinutes: duration === null ? null : rounded(duration / 60, 2),
+        distanceKm: distance === null ? null : rounded(distance / 1000, 3),
+        speedKmh: speed === null ? null : rounded(speed * 3.6, 2),
+        paceMinutesPerKm: speed === null || speed <= 0 ? null : rounded(1000 / speed / 60, 2),
+        averageHeartRate: rounded(numberOrNull(item.average_heartrate)),
+        maxHeartRate: rounded(numberOrNull(item.max_heartrate)),
+        averageWatts: rounded(numberOrNull(item.average_watts)),
+        normalizedWatts: rounded(numberOrNull(item.weighted_average_watts)),
+        averageCadence: rounded(numberOrNull(item.average_cadence)),
+        intensity: rounded(numberOrNull(item.intensity), 2),
+        trainingLoad: rounded(numberOrNull(item.training_load), 2)
+      };
+    });
+  return {
+    ...sanitizeActivity(raw),
+    intervalCount: source.length,
+    intervalsTruncated: source.length > MAX_INTERVALS,
+    intervals
   };
 }
