@@ -5,6 +5,7 @@ import { addDays, japanToday, validateRange } from "./dates.js";
 import {
   IntervalsClient,
   sanitizeActivity,
+  sanitizeActivityDetail,
   sanitizeWellness,
   type ActivitySummary,
   type WellnessDay
@@ -38,6 +39,27 @@ const activityOutputSchema = z.object({
   normalizedWatts: nullableNumber,
   calories: nullableNumber,
   availabilityNote: nullableString
+});
+const intervalOutputSchema = z.object({
+  type: nullableString,
+  startSeconds: nullableNumber,
+  endSeconds: nullableNumber,
+  durationMinutes: nullableNumber,
+  distanceKm: nullableNumber,
+  speedKmh: nullableNumber,
+  paceMinutesPerKm: nullableNumber,
+  averageHeartRate: nullableNumber,
+  maxHeartRate: nullableNumber,
+  averageWatts: nullableNumber,
+  normalizedWatts: nullableNumber,
+  averageCadence: nullableNumber,
+  intensity: nullableNumber,
+  trainingLoad: nullableNumber
+});
+const activityDetailOutputSchema = activityOutputSchema.extend({
+  intervalCount: z.number(),
+  intervalsTruncated: z.boolean(),
+  intervals: z.array(intervalOutputSchema)
 });
 const wellnessOutputSchema = z.object({
   date: z.string(),
@@ -153,6 +175,26 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
         validateRange(oldest, newest, config.maxRangeDays);
         const activities: ActivitySummary[] = (await client.activities(oldest, newest)).map(sanitizeActivity);
         return textAndData({ oldest, newest, activities });
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_activity_detail",
+    withSecurity({
+      title: "Intervals.icu アクティビティ詳細",
+      description:
+        "活動IDを指定し、活動の主要指標とインターバルごとの時間・距離・心拍・パワーを読み取り専用で取得します。GPS座標、元ファイル、時系列の生データは返しません。",
+      inputSchema: { activityId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "有効な活動IDを指定してください") },
+      outputSchema: { activity: activityDetailOutputSchema },
+      annotations: readOnlyAnnotations
+    }),
+    async ({ activityId }) => {
+      try {
+        const activity = sanitizeActivityDetail(await client.activity(activityId));
+        return textAndData({ activity });
       } catch (error) {
         return toolError(error);
       }

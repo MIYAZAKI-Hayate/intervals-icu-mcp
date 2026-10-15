@@ -5,10 +5,11 @@ Garmin Connect から Intervals.icu に同期されたアクティビティ・�
 ## できること
 
 - `get_activities`: 期間内のアクティビティ要約
+- `get_activity_detail`: 活動IDで主要指標と最大200区間の詳細を取得
 - `get_wellness`: CTL、ATL、フォーム、負荷、HRV、睡眠など
 - `get_training_summary`: 競技別の時間・距離・負荷と最新Wellnessをまとめて取得
 
-全ツールは読み取り専用です。GPS座標、元のFITファイル、Intervals.icu APIキーはChatGPTへ返しません。Garmin独自の「トレーニングレディネス」「リカバリータイム」「トレーニングステータス」は、従来どおりスクリーンショットで補完します。
+全ツールは読み取り専用です。GPS座標、元のFITファイル、時系列の生データ、Intervals.icu APIキーはChatGPTへ返しません。Garmin独自の「トレーニングレディネス」「リカバリータイム」「トレーニングステータス」は、従来どおりスクリーンショットで補完します。
 
 ## 0. 先にAPIキーを更新
 
