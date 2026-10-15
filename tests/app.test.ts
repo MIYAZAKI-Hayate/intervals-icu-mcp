@@ -23,6 +23,8 @@ function fakeIntervalsClient() {
     const url = new URL(String(input));
     const data = url.pathname.endsWith("/activities")
       ? [{ id: "a1", type: "Run", moving_time: 3600, distance: 10000 }]
+      : url.pathname.endsWith("/sport-settings")
+        ? [{ id: 8, types: ["Run", "VirtualRun"], threshold_pace: 4, lthr: 170, email: "private@example.com" }]
       : url.pathname.endsWith("/streams.json")
         ? [{ type: "time", data: [0, 10, 20] }, { type: "heartrate", data: [120, 140, 150] }]
       : url.pathname.endsWith("/events")
@@ -51,9 +53,17 @@ test("local MCP endpoint lists read-only tools and returns a training summary", 
     const tools = await client.listTools();
     assert.deepEqual(
       tools.tools.map((tool) => tool.name).sort(),
-      ["get_activities", "get_activity_detail", "get_activity_streams", "get_planned_workouts", "get_training_summary", "get_wellness"]
+      ["get_activities", "get_activity_detail", "get_activity_streams", "get_planned_workouts", "get_sport_settings", "get_training_summary", "get_wellness"]
     );
     assert.ok(tools.tools.every((tool) => tool.annotations?.readOnlyHint === true));
+    const settingsResult = await client.callTool({ name: "get_sport_settings", arguments: { sport: "VirtualRun" } });
+    assert.equal(settingsResult.isError, undefined);
+    const settings = settingsResult.structuredContent?.settings as Array<{ thresholdSecondsPerKm: number }>;
+    assert.equal(settings[0]?.thresholdSecondsPerKm, 250);
+    assert.ok(!JSON.stringify(settingsResult).includes("private@example.com"));
+    const absent = await client.callTool({ name: "get_sport_settings", arguments: { sport: "Swim" } });
+    assert.deepEqual(absent.structuredContent?.settings, []);
+    assert.equal((await client.callTool({ name: "get_sport_settings", arguments: { sport: "../Run" } })).isError, true);
 
     const result = await client.callTool({
       name: "get_training_summary",
