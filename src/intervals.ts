@@ -40,6 +40,10 @@ export class IntervalsClient {
     return this.getObject(`/athlete/0/events/${encodeURIComponent(id)}`, {}, "PUT", payload);
   }
 
+  async deletePlannedWorkout(id: string): Promise<void> {
+    await this.getJson(`/athlete/0/events/${encodeURIComponent(id)}`, { others: "false" }, "DELETE");
+  }
+
   private async getObject(path: string, query: Record<string, string>, method = "GET", payload?: JsonObject): Promise<JsonObject> {
     const value = await this.getJson(path, query, method, payload);
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -97,6 +101,7 @@ export class IntervalsClient {
       throw new Error("保存結果を確認できません。再実行前にカレンダーを再取得してください。");
     }
     if (!response.ok) throw new IntervalsApiError(response.status);
+    if (method === "DELETE") return null;
     try {
       return await response.json() as unknown;
     } catch (error) {

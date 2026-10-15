@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AppConfig } from "./config.js";
 import { calendarWriteAuthError, toolSecuritySchemes } from "./auth.js";
-import { IntervalsClient, plannedWorkoutRevision, sanitizePlannedWorkout, type JsonObject } from "./intervals.js";
+import { IntervalsApiError, IntervalsClient, plannedWorkoutRevision, sanitizePlannedWorkout, type JsonObject } from "./intervals.js";
 
 export const plannedWorkoutOutputSchema = z.object({
   id: z.string(), revision: z.string(), startDateLocal: z.string().nullable(),
@@ -60,6 +60,43 @@ export function registerCalendarWriteTools(server: McpServer, config: AppConfig,
   if (!config.calendarWriteEnabled) return;
   const securitySchemes = toolSecuritySchemes(config, true);
   const security = { securitySchemes, _meta: { securitySchemes } };
+
+  server.registerTool("delete_planned_workout", {
+    ...security,
+    title: "Intervals.icu 予定練習の削除",
+    description: "ユーザーが削除を依頼した予定練習を1件だけ削除します。最新の予定一覧で名前・日時をユーザーに示し、削除対象を確認してから実行してください。取得時のIDとrevisionが必要です。変更済み・編集禁止の予定は拒否し、関連予定は削除しません。削除後に対象の不在を再取得で確認します。通信失敗時は予定を再取得し、自動で再実行しないでください。",
+    inputSchema: {
+      eventId: z.string().regex(/^[1-9]\d{0,9}$/),
+      expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).describe("最新のget_planned_workoutsで取得した対象予定のrevision")
+    },
+    outputSchema: { deletedWorkout: plannedWorkoutOutputSchema, deletionVerified: z.literal(true) },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false }
+  }, async ({ eventId, expectedRevision }, extra) => {
+    const denied = calendarWriteAuthError(config, extra.authInfo);
+    if (denied) return denied;
+    try {
+      return await serializeWrite(client, async () => {
+        const previous = await client.plannedWorkout(eventId);
+        assertWorkout(previous, eventId);
+        if (previous.athlete_cannot_edit === true || previous.structure_read_only === true) {
+          throw new Error("この予定は編集が制限されています。Intervals.icuで確認してください。");
+        }
+        if (plannedWorkoutRevision(previous) !== expectedRevision) {
+          throw new Error("取得後に予定が変更されています。最新の予定を読み直してから削除してください。");
+        }
+        await client.deletePlannedWorkout(eventId);
+        try {
+          await client.plannedWorkout(eventId);
+        } catch (error) {
+          if (error instanceof IntervalsApiError && error.status === 404) {
+            return result({ deletedWorkout: sanitizePlannedWorkout(previous), deletionVerified: true });
+          }
+          throw new Error("削除要求後の結果を確認できません。再実行前にカレンダーを再取得してください。");
+        }
+        throw new Error("削除要求後も対象の予定が存在します。カレンダーを再取得して確認してください。");
+      });
+    } catch (error) { return failure(error); }
+  });
 
   server.registerTool("create_planned_workout", {
     ...security,

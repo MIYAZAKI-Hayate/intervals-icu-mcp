@@ -26,6 +26,11 @@ function fakeApi(initial: JsonObject[] = []) {
     let response: unknown;
     if (method === "GET") {
       response = address.pathname.endsWith("/events") ? events : events.find((event) => String(event.id) === address.pathname.split("/").at(-1));
+      if (response === undefined) return new Response(null, { status: 404 });
+    } else if (method === "DELETE") {
+      writes.push({ method, url: address, payload: {} });
+      events = events.filter((event) => String(event.id) !== address.pathname.split("/").at(-1));
+      return new Response(null, { status: 204 });
     } else {
       const payload = JSON.parse(String(init?.body)) as JsonObject;
       writes.push({ method, url: address, payload });
@@ -77,12 +82,13 @@ async function withMcp(fetchImpl: typeof fetch, run: (connect: (scopes?: string[
   }
 }
 
-test("valid read-only tokens cannot invoke either calendar write tool", async () => {
+test("valid read-only tokens cannot invoke calendar write tools", async () => {
   const api = fakeApi([fixture]);
   await withMcp(api.fetchImpl, async (connect) => {
     const client = await connect(["intervals:read"]);
     for (const call of [
       { name: "create_planned_workout", arguments: input },
+      { name: "delete_planned_workout", arguments: { eventId: "123", expectedRevision: plannedWorkoutRevision(fixture) } },
       { name: "update_planned_workout", arguments: { eventId: "123", expectedRevision: plannedWorkoutRevision(fixture), changes: { name: "New name" } } }
     ]) {
       const response = await client.callTool(call);
@@ -91,6 +97,65 @@ test("valid read-only tokens cannot invoke either calendar write tool", async ()
     }
     assert.equal(api.writes.length, 0);
   });
+});
+
+test("delete removes only the selected workout and verifies absence; repeated calls cannot delete again", async () => {
+  const api = fakeApi([fixture, { ...fixture, id: 124 }]);
+  await withMcp(api.fetchImpl, async (connect) => {
+    const client = await connect();
+    const tool = (await client.listTools()).tools.find((item) => item.name === "delete_planned_workout");
+    assert.equal(tool?.annotations?.destructiveHint, true);
+    const call = { name: "delete_planned_workout", arguments: { eventId: "123", expectedRevision: plannedWorkoutRevision(fixture) } };
+    const response = await client.callTool(call);
+    assert.equal(response.isError, undefined);
+    assert.equal(response.structuredContent?.deletionVerified, true);
+    assert.equal(api.writes.length, 1);
+    assert.equal(api.writes[0]?.method, "DELETE");
+    assert.equal(api.writes[0]?.url.pathname, "/api/v1/athlete/0/events/123");
+    assert.equal(api.writes[0]?.url.searchParams.get("others"), "false");
+    assert.equal((await client.callTool(call)).isError, true);
+    const remaining = await new IntervalsClient("test", "https://intervals.example/api/v1", 1000, api.fetchImpl).plannedWorkouts("2026-10-16", "2026-10-16");
+    assert.deepEqual(remaining.map((event) => event.id), [124]);
+    assert.equal(api.writes.length, 1);
+  });
+});
+
+test("delete refuses stale, non-workout, locked, mismatched and invalid targets", async () => {
+  const entries = [fixture, { ...fixture, id: 124, category: "NOTE" }, { ...fixture, id: 125, athlete_cannot_edit: true }, { ...fixture, id: 126, structure_read_only: true }];
+  const api = fakeApi(entries);
+  await withMcp(api.fetchImpl, async (connect) => {
+    const client = await connect();
+    for (const event of entries) {
+      const response = await client.callTool({ name: "delete_planned_workout", arguments: {
+        eventId: String(event.id), expectedRevision: event.id === 123 ? "0".repeat(64) : plannedWorkoutRevision(event)
+      } });
+      assert.equal(response.isError, true);
+    }
+    assert.equal((await client.callTool({ name: "delete_planned_workout", arguments: { eventId: "../123", expectedRevision: plannedWorkoutRevision(fixture) } })).isError, true);
+    assert.equal(api.writes.length, 0);
+  });
+  await withMcp(async () => Response.json({ ...fixture, id: 999 }), async (connect) => {
+    assert.equal((await (await connect()).callTool({ name: "delete_planned_workout", arguments: { eventId: "123", expectedRevision: plannedWorkoutRevision(fixture) } })).isError, true);
+  });
+});
+
+test("delete never retries uncertain requests or claims success without a 404 verification", async () => {
+  for (const mode of ["network", "server", "present", "verify-failure"]) {
+    let deletes = 0;
+    await withMcp(async (_url, init) => {
+      if (init?.method === "DELETE") {
+        deletes++;
+        if (mode === "network") throw new Error("Lost response");
+        return new Response(null, { status: mode === "server" ? 500 : 200 });
+      }
+      if (deletes && mode === "verify-failure") return new Response(null, { status: 503 });
+      return Response.json(fixture);
+    }, async (connect) => {
+      const response = await (await connect()).callTool({ name: "delete_planned_workout", arguments: { eventId: "123", expectedRevision: plannedWorkoutRevision(fixture) } });
+      assert.equal(response.isError, true);
+      assert.equal(deletes, 1);
+    });
+  }
 });
 
 test("write-authorized tools create and update one workout using only specified fields", async () => {
