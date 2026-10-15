@@ -15,6 +15,7 @@ import {
 import { buildTrainingSummary } from "./summary.js";
 import { toolSecuritySchemes } from "./auth.js";
 import { plannedWorkoutOutputSchema, registerCalendarWriteTools } from "./calendar.js";
+import { streamsResultSchema, summarizeStreams } from "./streams.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DDで指定してください");
 const readOnlyAnnotations = {
@@ -288,6 +289,26 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
       }
     }
   );
+
+  server.registerTool("get_activity_streams", withSecurity({
+    title: "Intervals.icu 心拍・パワーの時間帯別分析",
+    description: "活動IDを指定し、心拍・パワー・ケイデンス・速度・距離・正味の標高変化を時間帯ごとに集計します。最大180区間で全範囲を返します。活動開始からの秒数で範囲を絞れます。GPS座標、絶対標高、元の時系列配列は返しません。平均は時間加重、30秒超の記録の空白は欠測として除外します。",
+    inputSchema: {
+      activityId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+      startSeconds: z.number().int().min(0).optional().describe("活動開始からの経過秒数。省略時は全体の開始"),
+      endSeconds: z.number().int().min(1).optional().describe("活動開始からの経過秒数。省略時は最後の記録時刻"),
+      bucketSeconds: z.number().int().min(5).max(3600).default(60).describe("希望する集計間隔。長い活動では180区間以内に収まるよう広げる")
+    },
+    outputSchema: streamsResultSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+  }), async ({ activityId, startSeconds, endSeconds, bucketSeconds }) => {
+    try {
+      if (startSeconds !== undefined && endSeconds !== undefined && endSeconds <= startSeconds) {
+        throw new Error("終了秒は開始秒より後を指定してください。");
+      }
+      return textAndData(summarizeStreams(activityId, await client.activityStreams(activityId), { startSeconds, endSeconds, bucketSeconds }));
+    } catch (error) { return toolError(error); }
+  });
 
   registerCalendarWriteTools(server, config, client);
   return server;

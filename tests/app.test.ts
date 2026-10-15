@@ -23,6 +23,8 @@ function fakeIntervalsClient() {
     const url = new URL(String(input));
     const data = url.pathname.endsWith("/activities")
       ? [{ id: "a1", type: "Run", moving_time: 3600, distance: 10000 }]
+      : url.pathname.endsWith("/streams.json")
+        ? [{ type: "time", data: [0, 10, 20] }, { type: "heartrate", data: [120, 140, 150] }]
       : url.pathname.endsWith("/events")
         ? [{ id: 2, type: "Run", name: "Easy run", start_date_local: "2026-10-16T07:00:00" }]
       : url.pathname.endsWith("/activity/a1")
@@ -49,7 +51,7 @@ test("local MCP endpoint lists read-only tools and returns a training summary", 
     const tools = await client.listTools();
     assert.deepEqual(
       tools.tools.map((tool) => tool.name).sort(),
-      ["get_activities", "get_activity_detail", "get_planned_workouts", "get_training_summary", "get_wellness"]
+      ["get_activities", "get_activity_detail", "get_activity_streams", "get_planned_workouts", "get_training_summary", "get_wellness"]
     );
     assert.ok(tools.tools.every((tool) => tool.annotations?.readOnlyHint === true));
 
@@ -63,6 +65,12 @@ test("local MCP endpoint lists read-only tools and returns a training summary", 
     const detail = await client.callTool({ name: "get_activity_detail", arguments: { activityId: "a1" } });
     assert.equal(detail.isError, undefined);
     assert.equal((detail.structuredContent as { activity: { id: string } }).activity.id, "a1");
+
+    const streams = await client.callTool({ name: "get_activity_streams", arguments: { activityId: "a1" } });
+    assert.equal(streams.isError, undefined);
+    assert.equal((streams.structuredContent as { buckets: Array<{ heartRateBpm: { mean: number } }> }).buckets[0]?.heartRateBpm.mean, 130);
+    const invalidRange = await client.callTool({ name: "get_activity_streams", arguments: { activityId: "a1", startSeconds: 10, endSeconds: 5 } });
+    assert.equal(invalidRange.isError, true);
 
     const planned = await client.callTool({
       name: "get_planned_workouts",
