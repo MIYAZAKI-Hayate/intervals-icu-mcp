@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type JsonObject = Record<string, unknown>;
 
 export class IntervalsApiError extends Error {
@@ -26,6 +28,26 @@ export class IntervalsClient {
     return this.getArray("/athlete/0/events", { oldest, newest, category: "WORKOUT" });
   }
 
+  async plannedWorkout(id: string): Promise<JsonObject> {
+    return this.getObject(`/athlete/0/events/${encodeURIComponent(id)}`, {});
+  }
+
+  async createPlannedWorkout(payload: JsonObject): Promise<JsonObject> {
+    return this.getObject("/athlete/0/events", { upsertOnUid: "false" }, "POST", payload);
+  }
+
+  async updatePlannedWorkout(id: string, payload: JsonObject): Promise<JsonObject> {
+    return this.getObject(`/athlete/0/events/${encodeURIComponent(id)}`, {}, "PUT", payload);
+  }
+
+  private async getObject(path: string, query: Record<string, string>, method = "GET", payload?: JsonObject): Promise<JsonObject> {
+    const value = await this.getJson(path, query, method, payload);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("Intervals.icu returned an unexpected event response");
+    }
+    return value as JsonObject;
+  }
+
   async activity(id: string): Promise<JsonObject> {
     const value = await this.getJson(`/activity/${encodeURIComponent(id)}`, { intervals: "true" });
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -40,21 +62,42 @@ export class IntervalsClient {
     return value.filter((item): item is JsonObject => typeof item === "object" && item !== null);
   }
 
-  private async getJson(path: string, query: Record<string, string>): Promise<unknown> {
+  private async getJson(path: string, query: Record<string, string>, method = "GET", payload?: JsonObject): Promise<unknown> {
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
 
-    const response = await this.fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${Buffer.from(`API_KEY:${this.apiKey}`).toString("base64")}`,
-        "User-Agent": "intervals-icu-readonly-mcp/1.0"
-      },
-      signal: AbortSignal.timeout(this.timeoutMs)
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method,
+        ...(payload ? { body: JSON.stringify(payload) } : {}),
+        headers: {
+          Accept: "application/json",
+          ...(payload ? { "Content-Type": "application/json" } : {}),
+          Authorization: `Basic ${Buffer.from(`API_KEY:${this.apiKey}`).toString("base64")}`,
+          "User-Agent": "intervals-icu-readonly-mcp/1.0"
+        },
+        signal: AbortSignal.timeout(this.timeoutMs)
+      });
+    } catch (error) {
+      if (method !== "GET") {
+        throw new Error("保存結果を確認できません。重複を避けるため、再実行前にカレンダーを再取得してください。");
+      }
+      throw error;
+    }
 
+    if (!response.ok && method !== "GET" && response.status >= 500) {
+      throw new Error("保存結果を確認できません。再実行前にカレンダーを再取得してください。");
+    }
     if (!response.ok) throw new IntervalsApiError(response.status);
-    return response.json() as Promise<unknown>;
+    try {
+      return await response.json() as unknown;
+    } catch (error) {
+      if (method !== "GET") {
+        throw new Error("保存結果を確認できません。再実行前にカレンダーを再取得してください。");
+      }
+      throw error;
+    }
   }
 }
 
@@ -76,6 +119,12 @@ export type ActivitySummary = ReturnType<typeof sanitizeActivity>;
 export type WellnessDay = ReturnType<typeof sanitizeWellness>;
 export type PlannedWorkout = ReturnType<typeof sanitizePlannedWorkout>;
 
+export function plannedWorkoutRevision(raw: JsonObject): string {
+  // Use fields present in both list and single-event responses, including the upstream revision.
+  const fields = ["id", "updated", "category", "start_date_local", "end_date_local", "type", "name", "description"];
+  return createHash("sha256").update(JSON.stringify(fields.map((key) => raw[key] ?? null))).digest("hex");
+}
+
 export function sanitizePlannedWorkout(raw: JsonObject) {
   const workoutDoc = typeof raw.workout_doc === "object" && raw.workout_doc !== null && !Array.isArray(raw.workout_doc)
     ? raw.workout_doc as JsonObject
@@ -85,6 +134,7 @@ export function sanitizePlannedWorkout(raw: JsonObject) {
   const description = stringOrNull(raw.description);
   return {
     id: String(raw.id ?? ""),
+    revision: plannedWorkoutRevision(raw),
     startDateLocal: stringOrNull(raw.start_date_local),
     sport: stringOrNull(raw.type) ?? "Unknown",
     name: stringOrNull(raw.name),

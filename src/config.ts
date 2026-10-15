@@ -11,6 +11,7 @@ export type AppConfig = {
   resourceUrl?: string;
   auth0Issuer?: string;
   auth0AllowedSub?: string;
+  calendarWriteEnabled?: boolean;
 };
 
 function required(name: string): string {
@@ -57,6 +58,7 @@ export function loadConfig(): AppConfig {
     intervalsBaseUrl: normalizedUrl(process.env.INTERVALS_BASE_URL || "https://intervals.icu/api/v1"),
     intervalsTimeoutMs: integer("INTERVALS_TIMEOUT_MS", 15_000, 1_000, 60_000),
     maxRangeDays: integer("MAX_RANGE_DAYS", 120, 7, 366),
+    calendarWriteEnabled: process.env.ENABLE_CALENDAR_WRITE === "true",
     host: process.env.HOST?.trim() || "127.0.0.1",
     port: integer("PORT", 3000, 1, 65_535),
     authMode,

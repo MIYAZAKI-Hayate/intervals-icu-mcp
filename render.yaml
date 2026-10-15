@@ -12,6 +12,8 @@ services:
         value: 24.14.1
       - key: AUTH_MODE
         value: auth0
+      - key: ENABLE_CALENDAR_WRITE
+        value: "false"
       - key: HOST
         value: 0.0.0.0
       - key: INTERVALS_API_KEY
