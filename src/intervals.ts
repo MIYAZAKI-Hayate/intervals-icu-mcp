@@ -56,6 +56,13 @@ export class IntervalsClient {
     return value as JsonObject;
   }
 
+  async activityStreams(id: string): Promise<JsonObject[]> {
+    return this.getArray(`/activity/${encodeURIComponent(id)}/streams.json`, {
+      types: "time,heartrate,watts,cadence,velocity_smooth,distance,altitude,moving",
+      includeDefaults: "false"
+    });
+  }
+
   private async getArray(path: string, query: Record<string, string>): Promise<JsonObject[]> {
     const value = await this.getJson(path, query);
     if (!Array.isArray(value)) throw new Error("Intervals.icu returned an unexpected response");

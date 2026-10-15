@@ -6,6 +6,7 @@ Garmin Connect から Intervals.icu に同期されたアクティビティ・�
 
 - `get_activities`: 期間内のアクティビティ要約
 - `get_activity_detail`: 活動IDで主要指標と最大200区間の詳細を取得
+- `get_activity_streams`: 心拍・パワー・速度などを時間帯ごとに集計（全範囲を最大180区間）
 - `get_planned_workouts`: 指定期間のカレンダーにある予定練習を取得（最大200件）
 - `get_wellness`: CTL、ATL、フォーム、負荷、HRV、睡眠など
 - `get_training_summary`: 競技別の時間・距離・負荷と最新Wellnessをまとめて取得
@@ -18,6 +19,20 @@ Garmin Connect から Intervals.icu に同期されたアクティビティ・�
 - `update_planned_workout`: 予定IDと取得時の `revision` を指定し、日時・種目・名前・メニュー本文の指定項目だけを修正
 
 修正は `WORKOUT` のみ対象です。編集禁止の予定と取得後に変更された予定は拒否します。メニュー本文を修正する場合は全文を指定します。ローカル日時は `2026-10-16T07:00:00` の形式で指定し、UTCへの変換はしません。日時を移動する場合は既存の終了日時も同じだけ移動します。
+
+### 心拍・パワーの時間帯別分析
+
+`get_activity_streams` は活動IDを指定し、心拍（bpm）・パワー（W）・ケイデンス（回/分）・速度（km/h）の平均・最小・最大と、有効な記録秒数を返します。距離（m）と正味の標高変化（m）も返します。GPS座標、絶対標高、元の配列は返しません。既存の読み取り権限で利用できます。
+
+- `startSeconds` / `endSeconds`: 活動開始からの経過秒数。省略時は記録の全範囲。開始を含み、終了を含みません。
+- `bucketSeconds`: 希望する集計間隔（5〜3600秒、初期値60秒）。最大180区間に収まるよう必要なら広げ、`effectiveBucketSeconds` に実際の間隔を返します。長い活動も途中で打ち切りません。
+- 例えば開始1〜2時間の登坂を詳しく見る場合は `startSeconds=3600, endSeconds=7200, bucketSeconds=30` を指定します。
+
+平均はサンプル数ではなく経過時間で重み付けします。各センサー値を次の記録点まで保持しますが、記録間隔が30秒を超える区間と最後の点より先は推測しません。停止時間は除外せず、停止を含む平均です。利用できる場合は `movingSeconds` と `movingCoveredSeconds` も返します。
+
+欠測はゼロに置き換えません。パワー・速度・ケイデンスのゼロは有効値ですが、心拍のゼロは欠測扱いです。配列の長さが時刻と合わない指標は除外し、`unavailableStreams` と `notes` で知らせます。各指標の `coveredSeconds` を確認してから比較してください。累積距離の逆戻りも集計から除外します。
+
+距離と標高の変化は隣接点の差を時間帯に配分します。標高変化は正味の増減で、累積獲得標高ではありません。パワーはAPIが返した `watts` で、Normalized Powerの計算はしません。この集計から登坂の傾向は調べられますが、正式な登坂区間や地名を特定する機能ではありません。
 
 登録前に同じ日時・種目・名前の予定がないか確認します。書き込みの自動再試行は行いません。通信が途切れると保存済みか判別できないため、再実行前に予定を再取得してください。同一サーバープロセス内の書き込みは順番に実行しますが、Intervals.icu側での同時編集や複数サーバー間の競合を原子的に防ぐ保証はありません。
 
@@ -145,6 +160,7 @@ Garmin独自評価は、週1回または重要セッション前に以下の画�
 - [OpenAI Apps SDK: Connect from ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt)
 - [Intervals.icu Open API](https://www.intervals.icu/features/open-api/)
 - [Intervals.icu Calendar API](https://intervals.icu/api-docs.html)
+- [Intervals.icu API specification](https://intervals.icu/api/v1/docs)
 - [Intervals.icu planned workouts](https://forum.intervals.icu/t/uploading-planned-workouts-to-intervals-icu/63624)
 - [Auth0 Dynamic Client Registration](https://auth0.com/docs/get-started/applications/dynamic-client-registration)
 - [Render: Deploy a Node Express app](https://render.com/docs/deploy-node-express-app)
