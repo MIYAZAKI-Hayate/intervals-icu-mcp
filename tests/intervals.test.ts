@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IntervalsClient, sanitizeActivityDetail, sanitizePlannedWorkout } from "../src/intervals.js";
+import { IntervalsClient, sanitizeActivity, sanitizeActivityDetail, sanitizePlannedWorkout } from "../src/intervals.js";
+
+test("activity summaries and details expose only upstream paired event IDs without guessing", () => {
+  for (const sanitize of [sanitizeActivity, sanitizeActivityDetail]) {
+    assert.equal(sanitize({ id: "i123", paired_event_id: 144800943 }).pairedEventId, "144800943");
+    assert.equal(sanitize({ id: "i123", paired_event_id: "144800943" }).pairedEventId, "144800943");
+    for (const value of [undefined, null, 0, -1, 1.5, true, {}, "", "i123", "123/456", Number.NaN]) {
+      assert.equal(sanitize({ id: "i123", paired_event_id: value, name: "Same as plan", start_date_local: "2026-10-16T07:00:00" }).pairedEventId, null);
+    }
+  }
+});
 
 test("uses Intervals.icu Basic auth without exposing the key in the URL", async () => {
   let requestedUrl = "";

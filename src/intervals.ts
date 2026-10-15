@@ -167,6 +167,10 @@ export function sanitizeActivity(raw: JsonObject) {
   const distance = numberOrNull(raw.distance);
   return {
     id: String(raw.id ?? ""),
+    pairedEventId: typeof raw.paired_event_id === "number" && Number.isSafeInteger(raw.paired_event_id) && raw.paired_event_id > 0
+      ? String(raw.paired_event_id)
+      : typeof raw.paired_event_id === "string" && /^[1-9]\d*$/.test(raw.paired_event_id)
+        ? raw.paired_event_id : null,
     startDateLocal: stringOrNull(raw.start_date_local),
     name: stringOrNull(raw.name),
     sport: stringOrNull(raw.type) ?? stringOrNull(raw.sport) ?? "Unknown",

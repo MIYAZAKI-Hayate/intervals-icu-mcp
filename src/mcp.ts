@@ -29,6 +29,7 @@ const nullableNumber = z.number().nullable();
 const nullableString = z.string().nullable();
 const activityOutputSchema = z.object({
   id: z.string(),
+  pairedEventId: nullableString,
   startDateLocal: nullableString,
   name: nullableString,
   sport: z.string(),
@@ -170,7 +171,7 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
     withSecurity({
       title: "Intervals.icu アクティビティ取得",
       description:
-        "指定期間のトライアスロン練習アクティビティを読み取り専用で取得します。GPS座標と元ファイルは返しません。",
+        "指定期間のトライアスロン練習アクティビティを読み取り専用で取得します。pairedEventIdはIntervals.icuで関連付けられたカレンダー予定のIDで、get_planned_workoutsのidと照合できます。nullは関連ID未取得を示し、予定外・未実施と断定しないでください。関連予定が取得期間外の場合もあります。GPS座標と元ファイルは返しません。",
       inputSchema: { oldest: dateSchema, newest: dateSchema },
       outputSchema: activitiesResultSchema,
       annotations: readOnlyAnnotations
@@ -191,7 +192,7 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
     withSecurity({
       title: "Intervals.icu アクティビティ詳細",
       description:
-        "活動IDを指定し、活動の主要指標とインターバルごとの時間・距離・心拍・パワーを読み取り専用で取得します。GPS座標、元ファイル、時系列の生データは返しません。",
+        "活動IDを指定し、活動の主要指標とインターバルごとの時間・距離・心拍・パワーを読み取り専用で取得します。pairedEventIdは関連カレンダー予定のIDです。nullから予定外と推測しないでください。GPS座標、元ファイル、時系列の生データは返しません。",
       inputSchema: { activityId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "有効な活動IDを指定してください") },
       outputSchema: { activity: activityDetailOutputSchema },
       annotations: readOnlyAnnotations

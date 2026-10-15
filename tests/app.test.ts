@@ -22,7 +22,7 @@ function fakeIntervalsClient() {
   const fakeFetch: typeof fetch = async (input) => {
     const url = new URL(String(input));
     const data = url.pathname.endsWith("/activities")
-      ? [{ id: "a1", type: "Run", moving_time: 3600, distance: 10000 }]
+      ? [{ id: "a1", type: "Run", moving_time: 3600, distance: 10000, paired_event_id: 2 }]
       : url.pathname.endsWith("/sport-settings")
         ? [{ id: 8, types: ["Run", "VirtualRun"], threshold_pace: 4, lthr: 170, email: "private@example.com" }]
       : url.pathname.endsWith("/streams.json")
@@ -30,7 +30,7 @@ function fakeIntervalsClient() {
       : url.pathname.endsWith("/events")
         ? [{ id: 2, type: "Run", name: "Easy run", start_date_local: "2026-10-16T07:00:00" }]
       : url.pathname.endsWith("/activity/a1")
-        ? { id: "a1", type: "Run", moving_time: 3600, distance: 10000, icu_intervals: [] }
+        ? { id: "a1", type: "Run", moving_time: 3600, distance: 10000, paired_event_id: 2, icu_intervals: [] }
         : [{ id: "2026-10-15", ctl: 50, atl: 40 }];
     return new Response(JSON.stringify(data), {
       status: 200,
@@ -56,6 +56,13 @@ test("local MCP endpoint lists read-only tools and returns a training summary", 
       ["get_activities", "get_activity_detail", "get_activity_streams", "get_planned_workouts", "get_sport_settings", "get_training_summary", "get_wellness"]
     );
     assert.ok(tools.tools.every((tool) => tool.annotations?.readOnlyHint === true));
+    const activityList = await client.callTool({ name: "get_activities", arguments: { oldest: "2026-10-15", newest: "2026-10-16" } });
+    const activityDetail = await client.callTool({ name: "get_activity_detail", arguments: { activityId: "a1" } });
+    const linkedPlans = await client.callTool({ name: "get_planned_workouts", arguments: { oldest: "2026-10-15", newest: "2026-10-16" } });
+    const activities = activityList.structuredContent?.activities as Array<{ pairedEventId: string }>;
+    const workoutList = linkedPlans.structuredContent?.workouts as Array<{ id: string }>;
+    assert.equal(activities[0]?.pairedEventId, workoutList[0]?.id);
+    assert.equal((activityDetail.structuredContent?.activity as { pairedEventId: string }).pairedEventId, "2");
     const settingsResult = await client.callTool({ name: "get_sport_settings", arguments: { sport: "VirtualRun" } });
     assert.equal(settingsResult.isError, undefined);
     const settings = settingsResult.structuredContent?.settings as Array<{ thresholdSecondsPerKm: number }>;
