@@ -14,6 +14,7 @@ import {
 } from "./intervals.js";
 import { buildTrainingSummary } from "./summary.js";
 import { toolSecuritySchemes } from "./auth.js";
+import { plannedWorkoutOutputSchema, registerCalendarWriteTools } from "./calendar.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DDで指定してください");
 const readOnlyAnnotations = {
@@ -62,17 +63,6 @@ const activityDetailOutputSchema = activityOutputSchema.extend({
   intervalCount: z.number(),
   intervalsTruncated: z.boolean(),
   intervals: z.array(intervalOutputSchema)
-});
-const plannedWorkoutOutputSchema = z.object({
-  id: z.string(),
-  startDateLocal: nullableString,
-  sport: z.string(),
-  name: nullableString,
-  description: nullableString,
-  descriptionTruncated: z.boolean(),
-  plannedDurationMinutes: nullableNumber,
-  plannedDistanceKm: nullableNumber,
-  plannedTrainingLoad: nullableNumber
 });
 const wellnessOutputSchema = z.object({
   date: z.string(),
@@ -299,5 +289,6 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
     }
   );
 
+  registerCalendarWriteTools(server, config, client);
   return server;
 }
