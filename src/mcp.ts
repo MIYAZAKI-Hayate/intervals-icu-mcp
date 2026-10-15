@@ -6,8 +6,10 @@ import {
   IntervalsClient,
   sanitizeActivity,
   sanitizeActivityDetail,
+  sanitizePlannedWorkout,
   sanitizeWellness,
   type ActivitySummary,
+  type PlannedWorkout,
   type WellnessDay
 } from "./intervals.js";
 import { buildTrainingSummary } from "./summary.js";
@@ -60,6 +62,17 @@ const activityDetailOutputSchema = activityOutputSchema.extend({
   intervalCount: z.number(),
   intervalsTruncated: z.boolean(),
   intervals: z.array(intervalOutputSchema)
+});
+const plannedWorkoutOutputSchema = z.object({
+  id: z.string(),
+  startDateLocal: nullableString,
+  sport: z.string(),
+  name: nullableString,
+  description: nullableString,
+  descriptionTruncated: z.boolean(),
+  plannedDurationMinutes: nullableNumber,
+  plannedDistanceKm: nullableNumber,
+  plannedTrainingLoad: nullableNumber
 });
 const wellnessOutputSchema = z.object({
   date: z.string(),
@@ -195,6 +208,35 @@ export function createIntervalsMcpServer(config: AppConfig, client: IntervalsCli
       try {
         const activity = sanitizeActivityDetail(await client.activity(activityId));
         return textAndData({ activity });
+      } catch (error) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_planned_workouts",
+    withSecurity({
+      title: "Intervals.icu 予定練習取得",
+      description:
+        "指定期間のカレンダーに登録された予定練習を読み取り専用で取得します。メニュー本文は最大4000文字です。添付ファイルや位置情報は返しません。",
+      inputSchema: { oldest: dateSchema, newest: dateSchema },
+      outputSchema: {
+        oldest: z.string(), newest: z.string(),
+        workoutCount: z.number(), workoutsTruncated: z.boolean(),
+        workouts: z.array(plannedWorkoutOutputSchema)
+      },
+      annotations: readOnlyAnnotations
+    }),
+    async ({ oldest, newest }) => {
+      try {
+        validateRange(oldest, newest, config.maxRangeDays);
+        const raw = await client.plannedWorkouts(oldest, newest);
+        const workouts: PlannedWorkout[] = raw.slice(0, 200).map(sanitizePlannedWorkout);
+        return textAndData({
+          oldest, newest, workoutCount: raw.length,
+          workoutsTruncated: raw.length > 200, workouts
+        });
       } catch (error) {
         return toolError(error);
       }

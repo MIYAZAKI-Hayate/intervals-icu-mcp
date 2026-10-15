@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IntervalsClient, sanitizeActivityDetail } from "../src/intervals.js";
+import { IntervalsClient, sanitizeActivityDetail, sanitizePlannedWorkout } from "../src/intervals.js";
 
 test("uses Intervals.icu Basic auth without exposing the key in the URL", async () => {
   let requestedUrl = "";
@@ -57,4 +57,27 @@ test("limits returned intervals to 200", () => {
   assert.equal(detail.intervalCount, 201);
   assert.equal(detail.intervals.length, 200);
   assert.equal(detail.intervalsTruncated, true);
+});
+
+test("retrieves planned workouts without returning attached workout files", async () => {
+  let requestedUrl = "";
+  const fakeFetch: typeof fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify([{
+      id: 123, category: "WORKOUT", type: "Ride", name: "Tempo",
+      start_date_local: "2026-10-16T07:00:00", description: "2h with tempo blocks",
+      moving_time: 7200, distance: 60000, icu_training_load: 90,
+      file_contents_base64: "private-file", workout_file_base64: "private-file",
+      workout_doc: { duration: 7200, steps: [{ power: 200 }] }
+    }]), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const client = new IntervalsClient("test-key", "https://intervals.example/api/v1", 1000, fakeFetch);
+  const workouts = (await client.plannedWorkouts("2026-10-16", "2026-10-22")).map(sanitizePlannedWorkout);
+  const url = new URL(requestedUrl);
+  assert.equal(url.pathname, "/api/v1/athlete/0/events");
+  assert.equal(url.searchParams.get("category"), "WORKOUT");
+  assert.equal(url.searchParams.get("oldest"), "2026-10-16");
+  assert.equal(workouts[0]?.plannedDurationMinutes, 120);
+  assert.equal(workouts[0]?.plannedDistanceKm, 60);
+  assert.doesNotMatch(JSON.stringify(workouts), /private-file|file_contents|workout_doc/);
 });

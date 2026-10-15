@@ -22,6 +22,10 @@ export class IntervalsClient {
     return this.getArray("/athlete/0/wellness", { oldest, newest });
   }
 
+  async plannedWorkouts(oldest: string, newest: string): Promise<JsonObject[]> {
+    return this.getArray("/athlete/0/events", { oldest, newest, category: "WORKOUT" });
+  }
+
   async activity(id: string): Promise<JsonObject> {
     const value = await this.getJson(`/activity/${encodeURIComponent(id)}`, { intervals: "true" });
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -70,6 +74,27 @@ function rounded(value: number | null, digits = 1): number | null {
 
 export type ActivitySummary = ReturnType<typeof sanitizeActivity>;
 export type WellnessDay = ReturnType<typeof sanitizeWellness>;
+export type PlannedWorkout = ReturnType<typeof sanitizePlannedWorkout>;
+
+export function sanitizePlannedWorkout(raw: JsonObject) {
+  const workoutDoc = typeof raw.workout_doc === "object" && raw.workout_doc !== null && !Array.isArray(raw.workout_doc)
+    ? raw.workout_doc as JsonObject
+    : null;
+  const durationSeconds = numberOrNull(raw.moving_time) ?? numberOrNull(workoutDoc?.duration);
+  const distance = numberOrNull(raw.distance) ?? numberOrNull(workoutDoc?.distance);
+  const description = stringOrNull(raw.description);
+  return {
+    id: String(raw.id ?? ""),
+    startDateLocal: stringOrNull(raw.start_date_local),
+    sport: stringOrNull(raw.type) ?? "Unknown",
+    name: stringOrNull(raw.name),
+    description: description?.slice(0, 4000) ?? null,
+    descriptionTruncated: description !== null && description.length > 4000,
+    plannedDurationMinutes: durationSeconds === null ? null : rounded(durationSeconds / 60, 1),
+    plannedDistanceKm: distance === null ? null : rounded(distance / 1000, 2),
+    plannedTrainingLoad: rounded(numberOrNull(raw.icu_training_load) ?? numberOrNull(raw.training_load))
+  };
+}
 
 export function sanitizeActivity(raw: JsonObject) {
   const seconds = numberOrNull(raw.moving_time) ?? numberOrNull(raw.elapsed_time);
